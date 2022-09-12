@@ -16,10 +16,10 @@ import numpy as np
 import math
 
 _EVICTION_CASES = {
-                "CASE NUMBER": [], "COURT": [], "CASE CAPTION": [], "JUDGE": [], 
-                "FILED DATE": [], "CASE TYPE": [], "AMOUNT": [], "DISPOSITION": [], 
-                "PLAINTIFF NAME": [], "PLAINTIFF ADDRESS": [], "DEFENDANT_ATTORNEY": [],
-                "DEFENDANT NAME": [], "DEFENDANT ADDRESS": [], "PLAINTIFF_ATTORNEY": []}
+                "case_id": [], "court": [], "case_caption": [], "judge": [], 
+                "filed_date": [], "case_type": [], "amount": [], "disposition": [], 
+                "plaintiff_name": [], "plaintiff_address": [], "defendant_attorney": [],
+                "defendant_name": [], "defendant_address": [], "plaintiff_attorney": []}
 
 _KEYS_LIST = [key for key in _EVICTION_CASES.keys()]
 
@@ -101,7 +101,7 @@ class Eviction_Scraper:
             except ValueError:
                 print('something went wrong- entering ValueError except statement')
                 case = self.wait.until(EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/table/tbody/tr[1]/td[1]/div[3]/table/tbody/tr[1]/td[2]')))
-                print('scrapped case number successfuly')
+                print('scrapped case_id successfuly')
                 self.cases_with_issues.append(case.text)
 
             print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
@@ -269,7 +269,7 @@ def extract_summary_case_data(case_summary_table_rows):
 
     for row in case_summary_table_rows: 
         # convert tag into string, apply upper case, and split string by ":"
-        # example of row is 'CASE NUMBER : A1111111'
+        # example of row is 'case_id : A1111111'
         field_name, field_value = row.text.upper().split(":", 1)
         case_summary_dict[field_name.strip()] = field_value.strip()
         
@@ -297,21 +297,21 @@ def extract_party_info_data(party_info_table_rows):
         if len(row_fields) >= 3:               
             party = row_fields[2]            
             if party == 'P 1':
-                party_info_dict["PLAINTIFF NAME"] = row_fields[0]
-                party_info_dict["PLAINTIFF ADDRESS"] = row_fields[1]
+                party_info_dict["plaintiff_name"] = row_fields[0]
+                party_info_dict["plaintiff_address"] = row_fields[1]
                 
                 # check whether plaintiff has attorney
                 if len(row_fields) >= 4:
-                    party_info_dict["PLAINTIFF_ATTORNEY"] = row_fields[3]
+                    party_info_dict["plaintiff_attorney"] = row_fields[3]
 
             elif party == 'D 1' or ('D' in party and num_parties < 1):
                 num_parties += 1
-                party_info_dict["DEFENDANT NAME"] = row_fields[0]
-                party_info_dict["DEFENDANT ADDRESS"] = row_fields[1]
+                party_info_dict["defendant_name"] = row_fields[0]
+                party_info_dict["defendant_address"] = row_fields[1]
 
                 # check whether defendant has an attorney
                 if len(row_fields) >= 4:
-                    party_info_dict["DEFENDANT_ATTORNEY"] = row_fields[3]
+                    party_info_dict["defendant_attorney"] = row_fields[3]
         
     return party_info_dict
 
@@ -326,17 +326,21 @@ def normalize_data(dict_w_scraped_cases):
     Returns pandas df
     """
     df  = pd.DataFrame(dict_w_scraped_cases)  
-    df = df.dropna(subset=['CASE NUMBER']) 
-    df['FILED DATE'] = pd.to_datetime(df["FILED DATE"]).dt.date
-    df['LAST_UPDATED'] = dt.today().date()
+    df = df.drop_duplicates()
+    df = df.dropna(subset=['defendant_name']) 
+    df = df.dropna(subset=['plaintiff_name']) 
+    df = df.dropna(subset=['case_id']) 
+
+    df['filed_date'] = pd.to_datetime(df['filed_date']).dt.date
+    df['last_updated'] = dt.today().date()
     df = df.replace(r'^\s*$', None, regex=True)
     df = df.replace({np.nan: None})
 
-    # checks whether all values in the Disposition column are 'None'
-    if df.DISPOSITION.isnull().all():
-        df['DISPOSITION_DATE'] = None
+    # checks whether all values in the disposition column are 'None'
+    if df.disposition.isnull().all():
+        df['disposition_date'] = None
     else:
-        df[['DISPOSITION_DATE', 'DISPOSITION']] = df['DISPOSITION'].str.split(' - ', n=1, expand=True)
+        df[['disposition_date', 'disposition']] = df['disposition'].str.split(' - ', n=1, expand=True)
 
     return df
 
@@ -371,9 +375,9 @@ def scrape_cases_by_id(lst_case_ids, check_only_disposition = True):
                 disposition_tag = driver.find_element('xpath', '//*[@id="case_summary_table"]/tbody/tr[8]')
                 disposition_string = disposition_tag.text.upper()
             
-                if 'DISPOSITION' in disposition_string:
+                if 'disposition' in disposition_string:
                     _, disposition_value = disposition_string.split(":", 1)
-                    scraped_eviction_cases["DISPOSITION"][i] = disposition_value.strip()
+                    scraped_eviction_cases["disposition"][i] = disposition_value.strip()
 
             except:
                 cases_w_issues.append(id)
@@ -427,4 +431,3 @@ def scrape_cases_by_id(lst_case_ids, check_only_disposition = True):
     driver.quit()
 
     return scraped_eviction_cases, cases_w_issues
-
