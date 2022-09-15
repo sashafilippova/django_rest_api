@@ -30,6 +30,13 @@ _WEBDRIVER_LOCATION = r"/Users/oleksandrafilippova/Downloads/chromedriver"
 class Eviction_Scraper:
     
     def __init__(self, start_date, end_date):
+        """
+        Class to scrape court eviction filing records in Hamilton county, Ohio. 
+
+        Inputs:
+          start_date (str): must follow format 'mmddyyyy'
+          end_date (str): must follow format 'mmddyyyy'
+        """
 
         self.start_date = start_date
         self.end_date = end_date
@@ -41,9 +48,10 @@ class Eviction_Scraper:
     def run_scraper(self):
         """
         Scrapes eviction court cases from the Hamilton County
-        Clerk of Courts website, using "Selenium" and "Beautiful Soup" packages: 
+        Clerk of Courts website, using "Selenium" package: 
         https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/.
-        The result is either saved as a csv file or pandas df.
+        
+        Returns pandas dataframe.
         """
 
         self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
@@ -65,14 +73,16 @@ class Eviction_Scraper:
                 self.driver.find_element("xpath", "/html/body/div[1]/div[3]/button").click() 
                 self.__scrape_one_period()
                 print(f'Finished scraping period between {start}-{end} (from second try)')
-            
-            self.driver.back()
-        
-        self.driver.delete_all_cookies()
-        self.driver.quit()
+            except:
+                print(f"Unknown Exception- unable to finish scraping for the entire period. \
+                    Finished scraping before {start} date.")
+                break
 
-        df = normalize_data(self.eviction_cases)
-        return df
+            self.driver.back()
+            self.driver.delete_all_cookies()
+
+        self.driver.quit()
+        return normalize_data(self.eviction_cases)
 
 
     def __scrape_one_period(self):
@@ -134,7 +144,14 @@ class Eviction_Scraper:
         final_date.send_keys(end)
 
         # Version for MAC- search button
-        self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[4]").click()
+        #self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[4]").click()
+        #self.wait.until(EC.element_to_be_clickable((By.XPATH, 
+        #    "/html/body/div[1]/div/div[2]/form/input[4]"))).click()
+        #/html/body/div[1]/div/div[2]/form/input[3]
+        self.wait.until(EC.element_to_be_clickable((By.XPATH, 
+            '//*[@id="cc_frm"]/input[3]'))).click()
+
+
         # Version for Windows
         #self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[3]").click()
 
@@ -156,15 +173,21 @@ class Eviction_Scraper:
                 beg_date.send_keys(start_date)
                 
                 # MAC Version- click on search
-                self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[4]").click()
+                #self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[4]").click()
+                #self.wait.until(EC.element_to_be_clickable((By.XPATH, 
+                    #"/html/body/div[1]/div/div[2]/form/input[4]"))).click()
+                self.wait.until(EC.element_to_be_clickable((By.XPATH, 
+                    '//*[@id="cc_frm"]/input[3]'))).click()
             else:
                 print('uknown alert')
 
         except TimeoutException:
             pass
         
-        # Show all records on one page 
-        self.driver.find_element("xpath", "/html/body/div[1]/div[3]/button").click() 
+        finally:
+            # Show all records on one page 
+            #self.driver.find_element("xpath", "/html/body/div[1]/div[3]/button").click() 
+            self.wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/div[1]/div[3]/button"))).click()
 
 
 #########################################################
@@ -181,9 +204,9 @@ def initiate_driver(webdriver_location):
 
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-proxy-server")
-    chrome_options.add_argument("--proxy-server='direct://'")
-    chrome_options.add_argument("--proxy-bypass-list=*")                
+    #chrome_options.add_argument("--no-proxy-server")
+    #chrome_options.add_argument("--proxy-server='direct://'")
+    #chrome_options.add_argument("--proxy-bypass-list=*")                
         
     ua = UserAgent()
     userAgent = ua.random
@@ -192,7 +215,7 @@ def initiate_driver(webdriver_location):
     s = Service(webdriver_location)
     driver = webdriver.Chrome(service=s, options=chrome_options)
 
-    explicit_wait = WebDriverWait(driver, 40)
+    explicit_wait = WebDriverWait(driver, 50)
     driver.implicitly_wait(40)
     driver.maximize_window()
 
@@ -352,7 +375,7 @@ def scrape_cases_by_id(lst_case_ids, check_only_disposition = True):
     Inputs:
       lst_case_ids (lst): a list of case ids where each id is a string.
 
-    Returns (dict), (list) 
+    Returns dict, list
     """
     cases_w_issues = list()
     scraped_eviction_cases = {key: [None] * len(lst_case_ids) for key in _KEYS_LIST}
