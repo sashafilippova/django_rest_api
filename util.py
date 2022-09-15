@@ -114,8 +114,8 @@ class Eviction_Scraper:
                 print('scrapped case_id successfuly')
                 self.cases_with_issues.append(case.text)
 
-            print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
             time.sleep(7)
+            print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
             self.driver.close()
             self.driver.switch_to.window(search_tab_handle)
 
