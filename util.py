@@ -16,8 +16,8 @@ import numpy as np
 import math
 
 _EVICTION_CASES = {
-                "case_id": [], "court": [], "case_caption": [], "judge": [], 
-                "filed_date": [], "case_type": [], "amount": [], "disposition": [], 
+                "CASE NUMBER": [], "COURT": [], "CASE CAPTION": [], "JUDGE": [], 
+                "FILED DATE": [], "CASE TYPE": [], "AMOUNT": [], "DISPOSITION": [], 
                 "plaintiff_name": [], "plaintiff_address": [], "defendant_attorney": [],
                 "defendant_name": [], "defendant_address": [], "plaintiff_attorney": []}
 
@@ -29,30 +29,30 @@ _WEBDRIVER_LOCATION = r"/Users/oleksandrafilippova/Downloads/chromedriver"
 ############# Eviction Scraper Class ####################
 class Eviction_Scraper:
     
-    def __init__(self, start_date, end_date):
+    def __init__(self):
         """
         Class to scrape court eviction filing records in Hamilton county, Ohio. 
-
-        Inputs:
-          start_date (str): must follow format 'mmddyyyy'
-          end_date (str): must follow format 'mmddyyyy'
         """
-
-        self.start_date = start_date
-        self.end_date = end_date
-        self.lst_time_periods = date_converter(self.start_date, self.end_date)
         self.eviction_cases = _EVICTION_CASES.copy()
         self.cases_with_issues = []
 
 
-    def run_scraper(self):
+    def run_scraper(self, start_date, end_date):
         """
         Scrapes eviction court cases from the Hamilton County
         Clerk of Courts website, using "Selenium" package: 
         https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/.
+
+        Inputs:
+          start_date (str): must follow format 'mmddyyyy'
+          end_date (str): must follow format 'mmddyyyy'
         
         Returns pandas dataframe.
         """
+        self.start_date = start_date
+        self.end_date = end_date
+        self.lst_time_periods = date_converter(self.start_date, self.end_date)
+
 
         self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
         self.driver.get("https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/")
@@ -70,7 +70,6 @@ class Eviction_Scraper:
                 self.driver.get("https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/")
 
                 self.__process_search_webpage(start, end)
-                self.driver.find_element("xpath", "/html/body/div[1]/div[3]/button").click() 
                 self.__scrape_one_period()
                 print(f'Finished scraping period between {start}-{end} (from second try)')
             except:
@@ -90,7 +89,6 @@ class Eviction_Scraper:
         search_tab_handle = self.driver.current_window_handle
         records_xpath_list = self.driver.find_elements('xpath', "//td[5]/form")
 
-        self.local_records = None
         self.local_records = {key: [None] * len(records_xpath_list) for key in _KEYS_LIST}
 
         for i, record in enumerate(records_xpath_list): 
@@ -114,10 +112,12 @@ class Eviction_Scraper:
                 print('scrapped case_id successfuly')
                 self.cases_with_issues.append(case.text)
 
-            time.sleep(7)
-            print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
+            time.sleep(3)
+            #print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
             self.driver.close()
             self.driver.switch_to.window(search_tab_handle)
+        
+        print(f'Scraped {len(records_xpath_list)} records.')
 
         #add records to the main eviction file
         for key, value in self.local_records.items():
@@ -143,17 +143,8 @@ class Eviction_Scraper:
         final_date.clear()
         final_date.send_keys(end)
 
-        # Version for MAC- search button
-        #self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[4]").click()
-        #self.wait.until(EC.element_to_be_clickable((By.XPATH, 
-        #    "/html/body/div[1]/div/div[2]/form/input[4]"))).click()
-        #/html/body/div[1]/div/div[2]/form/input[3]
         self.wait.until(EC.element_to_be_clickable((By.XPATH, 
             '//*[@id="cc_frm"]/input[3]'))).click()
-
-
-        # Version for Windows
-        #self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[3]").click()
 
         try:
             WebDriverWait(self.driver, 3).until(EC.alert_is_present())
@@ -172,10 +163,6 @@ class Eviction_Scraper:
                 start_date = start_date.strftime("%m/%d/%Y")
                 beg_date.send_keys(start_date)
                 
-                # MAC Version- click on search
-                #self.driver.find_element("xpath", "/html/body/div[1]/div/div[2]/form/input[4]").click()
-                #self.wait.until(EC.element_to_be_clickable((By.XPATH, 
-                    #"/html/body/div[1]/div/div[2]/form/input[4]"))).click()
                 self.wait.until(EC.element_to_be_clickable((By.XPATH, 
                     '//*[@id="cc_frm"]/input[3]'))).click()
             else:
@@ -184,11 +171,86 @@ class Eviction_Scraper:
         except TimeoutException:
             pass
         
-        finally:
+        try:
             # Show all records on one page 
-            #self.driver.find_element("xpath", "/html/body/div[1]/div[3]/button").click() 
-            self.wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/div[1]/div[3]/button"))).click()
+            self.wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "/html/body/div[1]/div[3]/button"))).click()
 
+        except TimeoutException:
+            print('No records are probably present')
+
+
+    def scrape_cases_by_id(self, lst_case_ids, check_only_disposition = True):   
+        """
+        Scrapes case info for a provided list of case ids.
+
+        Inputs:
+          lst_case_ids (lst): a list of case ids where each id is a string.
+
+        Returns dict
+        """
+        scraped_eviction_cases = {key: [None] * len(lst_case_ids) for key in _KEYS_LIST}
+        self.driver.get("https://www.courtclerk.org/records-search/search-by-case-number/")
+
+        for case_id, idx in enumerate(lst_case_ids):
+
+            try:
+                # enter case_id on the search page
+                case_id_field = self.driver.find_element('name', 'casenumber').clear()
+                case_id_field.send_keys(case_id)    
+
+                # find search button and click on it
+                self.driver.find_element('xpath', '/html/body/div[1]/div/div[2]/form/p/input[4]').click()
+
+                if check_only_disposition:
+                    scraped_eviction_cases["CASE NUMBER"][idx] = case_id
+                    disposition_string = self.driver.find_element('xpath', '//*[@id="case_summary_table"]/tbody/tr[8]').text.upper()  
+                    #disposition_string = disposition_tag.text.upper()            
+                    if 'DISPOSITION' in disposition_string:
+                        _, disposition_value = disposition_string.split(":", 1)
+                        scraped_eviction_cases["DISPOSITION"][idx] = disposition_value.strip()
+                else:
+                    summary_case_dict, party_info_dict = scrape_one_case(self.driver, self.explicit_wait)
+                    case_dict = summary_case_dict.update(party_info_dict)
+                    for key, val in case_dict.items():
+                        if key in scraped_eviction_cases:
+                            scraped_eviction_cases[key][idx] = val                  
+
+            except TimeoutError:
+                print('entering timeout exception. Qutting & re-initiating the driver')
+                self.driver.quit()
+                self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
+                self.driver.get("https://www.courtclerk.org/records-search/search-by-case-number/")
+
+                # enter case_id on the search page
+                case_id_field = self.driver.find_element('name', 'casenumber').clear()
+                case_id_field.send_keys(id)
+    
+                # find search button and click on it
+                self.driver.find_element('xpath', '/html/body/div[1]/div/div[2]/form/p/input[4]').click()
+        
+                summary_case_dict, party_info_dict = scrape_one_case(self.driver, self.explicit_wait)
+                case_dict = summary_case_dict.update(party_info_dict)
+                for key, val in case_dict.items():
+                    if key in scraped_eviction_cases:
+                        scraped_eviction_cases[key][idx] = val
+            except:
+                print('Something went wrong. Stopping scraping.')
+                break 
+            
+            time.sleep(3)
+            self.driver.back()        
+
+        return scraped_eviction_cases          
+
+    
+    def __enter__(self): 
+        self.driver, self.explicit_wait = initiate_driver(_WEBDRIVER_LOCATION)
+        return self  
+
+
+    def __exit__(self, type, value, traceback): 
+        self.driver.quit()
 
 #########################################################
 
@@ -204,9 +266,9 @@ def initiate_driver(webdriver_location):
 
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    #chrome_options.add_argument("--no-proxy-server")
-    #chrome_options.add_argument("--proxy-server='direct://'")
-    #chrome_options.add_argument("--proxy-bypass-list=*")                
+    chrome_options.add_argument("--no-proxy-server")
+    chrome_options.add_argument("--proxy-server='direct://'")
+    chrome_options.add_argument("--proxy-bypass-list=*")                
         
     ua = UserAgent()
     userAgent = ua.random
@@ -263,7 +325,6 @@ def scrape_one_case(driver, explicit_wait):
     Returns dict with scraped info for one case
     """
     # open parties table with plaintiff and defendant info
-    #self.wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[1]/table/tbody/tr[1]/td[2]/form[4]'))).click()
     explicit_wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[1]/table/tbody/tr[1]/td[2]/form[4]/input[3]'))).click()
             
     # get a list of all rows containing data to be scraped 
@@ -292,10 +353,10 @@ def extract_summary_case_data(case_summary_table_rows):
 
     for row in case_summary_table_rows: 
         # convert tag into string, apply upper case, and split string by ":"
-        # example of row is 'case_id : A1111111'
+        # example of row is 'CASE NUMBER: A1111111'
         field_name, field_value = row.text.upper().split(":", 1)
         case_summary_dict[field_name.strip()] = field_value.strip()
-        
+
     return case_summary_dict
 
 
@@ -348,16 +409,21 @@ def normalize_data(dict_w_scraped_cases):
 
     Returns pandas df
     """
-    df  = pd.DataFrame(dict_w_scraped_cases)  
+    df  = pd.DataFrame(dict_w_scraped_cases) 
+
+    df.rename(columns={"CASE NUMBER":"case_id", "COURT":"court", "CASE CAPTION": "case_caption",
+            "JUDGE":"judge", "FILED DATE": "filed_date", "CASE TYPE": "case_type", "AMOUNT": "amount",
+            "DISPOSITION": "disposition"}, inplace=True)
+
     df = df.drop_duplicates()
-    df = df.dropna(subset=['defendant_name']) 
-    df = df.dropna(subset=['plaintiff_name']) 
     df = df.dropna(subset=['case_id']) 
 
+    df = df.replace(r'^\s*$', None, regex=True)
+    df = df.replace({np.nan: None})   
+
+    df['amount'] = round(pd.to_numeric(df['amount'], errors= 'coerce'))
     df['filed_date'] = pd.to_datetime(df['filed_date']).dt.date
     df['last_updated'] = dt.today().date()
-    df = df.replace(r'^\s*$', None, regex=True)
-    df = df.replace({np.nan: None})
 
     # checks whether all values in the disposition column are 'None'
     if df.disposition.isnull().all():
@@ -366,91 +432,3 @@ def normalize_data(dict_w_scraped_cases):
         df[['disposition_date', 'disposition']] = df['disposition'].str.split(' - ', n=1, expand=True)
 
     return df
-
-
-def scrape_cases_by_id(lst_case_ids, check_only_disposition = True):
-    """
-    Scrapes case info for a provided list of case ids.
-
-    Inputs:
-      lst_case_ids (lst): a list of case ids where each id is a string.
-
-    Returns dict, list
-    """
-    cases_w_issues = list()
-    scraped_eviction_cases = {key: [None] * len(lst_case_ids) for key in _KEYS_LIST}
-
-    driver, wait = initiate_driver(_WEBDRIVER_LOCATION)
-    driver.get("https://www.courtclerk.org/records-search/search-by-case-number/")
-
-    if check_only_disposition:
-
-        for i, id in enumerate(lst_case_ids):
-            try:
-                # enter case_id on the search page
-                case_id_field = driver.find_element('name', 'casenumber')
-                case_id_field.clear()
-                case_id_field.send_keys(id)
-    
-                # find search button and click on it
-                driver.find_element('xpath', '/html/body/div[1]/div/div[2]/form/p/input[4]').click()
-
-                disposition_tag = driver.find_element('xpath', '//*[@id="case_summary_table"]/tbody/tr[8]')
-                disposition_string = disposition_tag.text.upper()
-            
-                if 'disposition' in disposition_string:
-                    _, disposition_value = disposition_string.split(":", 1)
-                    scraped_eviction_cases["disposition"][i] = disposition_value.strip()
-
-            except:
-                cases_w_issues.append(id)
-
-    else:
-        for i, id in enumerate(lst_case_ids):
-            try:
-                # enter case_id on the search page
-                case_id_field = driver.find_element('name', 'casenumber')
-                case_id_field.clear()
-                case_id_field.send_keys(id)
-    
-                # find search button and click on it
-                driver.find_element('xpath', '/html/body/div[1]/div/div[2]/form/p/input[4]').click()
-
-                summary_case_dict, party_info_dict = scrape_one_case(driver, wait)
-
-                for key, val in summary_case_dict.items():
-                    if key in scraped_eviction_cases:
-                        scraped_eviction_cases[key][i] = val                  
-                for key, val in party_info_dict.items():
-                    scraped_eviction_cases[key][i] = val 
-
-            except TimeoutException:
-                print('entering timeout exception. Qutting & re-initiating the driver')
-                driver.quit()
-                driver, wait = initiate_driver(_WEBDRIVER_LOCATION)
-                driver.get("https://www.courtclerk.org/records-search/search-by-case-number/")
-
-                # enter case_id on the search page
-                case_id_field = driver.find_element('name', 'casenumber')
-                case_id_field.clear()
-                case_id_field.send_keys(id)
-    
-                # find search button and click on it
-                driver.find_element('xpath', '/html/body/div[1]/div/div[2]/form/p/input[4]').click()
-
-                summary_case_dict, party_info_dict = scrape_one_case(driver, wait)
-
-                for key, val in summary_case_dict.items():
-                    if key in scraped_eviction_cases:
-                        scraped_eviction_cases[key][i] = val                  
-                for key, val in party_info_dict.items():
-                    scraped_eviction_cases[key][i] = val 
-
-            except:
-                cases_w_issues.append(id)
-            
-            driver.back()
-
-    driver.quit()
-
-    return scraped_eviction_cases, cases_w_issues

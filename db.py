@@ -3,7 +3,7 @@ import numpy as np
 import math
 from datetime import datetime as dt, timedelta as tdelta
 import psycopg2.extras
-from util import Eviction_Scraper, scrape_cases_by_id 
+from util import Eviction_Scraper, scrape_cases_by_id, normalize_data
 
 class DB: 
     def __init__(self, connection):
@@ -49,12 +49,14 @@ class DB:
 
         # convert pandas df into a list of tuples
         records_lst = list(pd_df.to_records(index=False))
+        print('converted pd into records')
 
         query = f"""INSERT INTO {table_name} {columns} VALUES %s;"""
 
         with self.conn.cursor() as c:
             psycopg2.extras.execute_values(cur = c, sql = query, argslist = records_lst)
             self.conn.commit()
+            print('finished commit')
 
 
     def query_all_records(self, table_name):
@@ -101,27 +103,39 @@ class DB:
                 end_date = start_date + tdelta(days = 90)
             end_date = end_date.strftime("%m%d%Y")
         
-        pd_df = Eviction_Scraper(start_date, end_date).run_scraper()
+        pd_df = Eviction_Scraper().run_scraper(start_date, end_date)
+        print('finished scraping. about to inject records into the db')
         self.inject_data(pd_df, 'eviction_records')
 
     
-    def update_existing_records_disposition(self, records_per_batch = 500):
+    def update_existing_records_disposition(self, records_per_batch = 500, limit = None):
         """
         Identifies records in db with missing disposition and scrapes them 
           to update in db.
         """
         with self.conn.cursor() as c:
-            c.execute('select case_id from eviction_records where disposition is NULL;')
-            records_with_missing_disposition = [record[0] for record in c.fetchall()] 
+
+            if limit is not None:
+                c.execute(f'SELECT case_id FROM eviction_records \
+                        WHERE disposition is NULL LIMIT {limit};')
+
+                records_w_no_disposition = [record[0] for record in c.fetchall()] 
+            else:
+                c.execute(f'SELECT case_id FROM eviction_records \
+                        WHERE disposition is NULL LIMIT;')                
         
+        # create a list of batches containings records with no disposition
         record_batches = list()
-        for i in range(0, len(records_with_missing_disposition), records_per_batch):
-            record_batches.append(records_with_missing_disposition[i:i + records_per_batch])
+        for i in range(0, len(records_w_no_disposition), records_per_batch):
+            record_batches.append(records_w_no_disposition[i:i + records_per_batch])
         
+        print('record_batches: ', record_batches)
+
         for batch in record_batches:
-            scraped_eviction_cases, _ = scrape_cases_by_id(batch)
-            df = pd.DataFrame(scraped_eviction_cases)
+            scraped_eviction_cases = Eviction_Scraper().scrape_cases_by_id(batch)
+            df = normalize_data(scraped_eviction_cases)
             df = df.filter(['case_id', 'disposition', 'disposition_date', 'last_updated'])
+            
             columns = f"{tuple(df.columns)}".replace("'", "")
 
             # convert pandas df into a list of tuples
