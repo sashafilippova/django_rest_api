@@ -132,26 +132,26 @@ class DB:
         print('record_batches: ', record_batches)
 
         for batch in record_batches:
-            scraped_eviction_cases = Eviction_Scraper().scrape_cases_by_id(batch)
-            df = normalize_data(scraped_eviction_cases)
-            df = df.filter(['case_id', 'disposition', 'disposition_date', 'last_updated'])
-            
-            columns = f"{tuple(df.columns)}".replace("'", "")
+            with Eviction_Scraper() as e:
+                scraped_eviction_cases = e.scrape_cases_by_id(batch)
+                df = normalize_data(scraped_eviction_cases)
+                df = df.filter(['case_id', 'disposition', 'disposition_date', 'last_updated'])
+                columns = f"{tuple(df.columns)}".replace("'", "")
 
-            # convert pandas df into a list of tuples
-            records_lst = list(df.to_records(index=False))
+                # convert pandas df into a list of tuples
+                records_lst = list(df.to_records(index=False))
 
-            query = f"""UPDATE eviction_records AS e SET
-                            disposition = c.disposition
-                            disposition_date = c.disposition_date
-                            last_updated = c.last_updated
-                        FROM (VALUES  %s 
-                        ) AS c {columns}
-                        WHERE c.case_id = e.case_id;"""
+                query = f"""UPDATE eviction_records AS e SET
+                                disposition = c.disposition
+                                disposition_date = c.disposition_date
+                                last_updated = c.last_updated
+                            FROM (VALUES  %s 
+                            ) AS c {columns}
+                            WHERE c.case_id = e.case_id;"""
 
-            with self.conn.cursor() as c:
-                psycopg2.extras.execute_values(cur = c, sql = query, argslist = records_lst)
-                self.conn.commit()
+                with self.conn.cursor() as c:
+                    psycopg2.extras.execute_values(cur = c, sql = query, argslist = records_lst)
+                    self.conn.commit()
 
 
 
