@@ -4,7 +4,7 @@ from selenium.webdriver.support.ui import Select    # for drop-down menu
 from selenium.webdriver.support.ui import WebDriverWait       
 from selenium.webdriver.common.by import By       
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.chrome.options import Options 
 from selenium.webdriver.chrome.service import Service    
   
@@ -14,6 +14,9 @@ from datetime import datetime as dt, timedelta as tdelta
 import pandas as pd
 import numpy as np
 import math
+import logging
+
+logging.basicConfig(level=logging.INFO, filename='testing_update_records.log')
 
 _EVICTION_CASES = {
                 "CASE NUMBER": [], "COURT": [], "CASE CAPTION": [], "JUDGE": [], 
@@ -55,25 +58,27 @@ class Eviction_Scraper:
 
 
         self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
-        self.driver.get("https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/")
+        self.driver.get(
+            "https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/")
 
         for start, end in self.lst_time_periods:
             try:
                 self.__process_search_webpage(start, end)
                 self.__scrape_one_period()
-                print(f'Finished scraping period between {start}-{end}')
+                logging.info(f'Finished scraping period between {start}-{end}')
 
             except TimeoutException:
-                print('entering timeout exception. Qutting & re-initiating the driver')
+                logging.info('entering timeout exception. Qutting & re-initiating the driver')
                 self.driver.quit()
                 self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
-                self.driver.get("https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/")
+                self.driver.get(
+                    "https://www.courtclerk.org/records-search/municipal-civil-listing-by-classification/")
 
                 self.__process_search_webpage(start, end)
                 self.__scrape_one_period()
-                print(f'Finished scraping period between {start}-{end} (from second try)')
+                logging.info(f'Finished scraping period between {start}-{end} (from second try)')
             except:
-                print(f"Unknown Exception- unable to finish scraping for the entire period. \
+                logging.info(f"Unknown Exception- unable to finish scraping for the entire period. \
                     Finished scraping before {start} date.")
                 break
 
@@ -86,42 +91,51 @@ class Eviction_Scraper:
 
     def __scrape_one_period(self):
 
-        search_tab_handle = self.driver.current_window_handle
+        try:
+            # Show all records on one page 
+            self.wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "/html/body/div[1]/div[3]/button"))).click()
+        except TimeoutException:
+            print('Did not find the "show all rows" button. No records are probably present')
+
         records_xpath_list = self.driver.find_elements('xpath', "//td[5]/form")
+        print(f'found {len(records_xpath_list)} records')
 
-        self.local_records = {key: [None] * len(records_xpath_list) for key in _KEYS_LIST}
+        if len(records_xpath_list) > 0:
+            search_tab_handle = self.driver.current_window_handle
+            self.local_records = {key: [None] * len(records_xpath_list) for key in _KEYS_LIST}
 
-        for i, record in enumerate(records_xpath_list): 
-            self.wait.until(EC.element_to_be_clickable(record)).click()
-            # switch focus to the newly open tab to scrape data
-            self.driver.switch_to.window(self.driver.window_handles[1])
-            start_time = time.time()
+            for i, record in enumerate(records_xpath_list): 
+                self.wait.until(EC.element_to_be_clickable(record)).click()
+                # switch focus to the newly open tab to scrape data
+                self.driver.switch_to.window(self.driver.window_handles[1])
+                start_time = time.time()
+                
+                try:
+                    summary_case_dict, party_info_dict = scrape_one_case(self.driver, self.wait)
+
+                    for key, val in summary_case_dict.items():
+                        if key in self.local_records:
+                            self.local_records[key][i] = val                  
+                    for key, val in party_info_dict.items():
+                        self.local_records[key][i] = val 
+
+                except ValueError:
+                    logging.info('something went wrong- entering ValueError except statement')
+                    case = self.wait.until(EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/table/tbody/tr[1]/td[1]/div[3]/table/tbody/tr[1]/td[2]')))
+                    logging.info('scrapped case_id successfuly')
+                    self.cases_with_issues.append(case.text)
+
+                time.sleep(3)
+                #print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
+                self.driver.close()
+                self.driver.switch_to.window(search_tab_handle)
             
-            try:
-                summary_case_dict, party_info_dict = scrape_one_case(self.driver, self.wait)
+            logging.info(f'Scraped {len(records_xpath_list)} records.')
 
-                for key, val in summary_case_dict.items():
-                    if key in self.local_records:
-                        self.local_records[key][i] = val                  
-                for key, val in party_info_dict.items():
-                    self.local_records[key][i] = val 
-
-            except ValueError:
-                print('something went wrong- entering ValueError except statement')
-                case = self.wait.until(EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/table/tbody/tr[1]/td[1]/div[3]/table/tbody/tr[1]/td[2]')))
-                print('scrapped case_id successfuly')
-                self.cases_with_issues.append(case.text)
-
-            time.sleep(3)
-            #print(f"It took to scrape this page {time.time() - start_time} ({i} out of {len(records_xpath_list)}) to run.")
-            self.driver.close()
-            self.driver.switch_to.window(search_tab_handle)
-        
-        print(f'Scraped {len(records_xpath_list)} records.')
-
-        #add records to the main eviction file
-        for key, value in self.local_records.items():
-                self.eviction_cases[key] += value 
+            #add records to the main eviction file
+            for key, value in self.local_records.items():
+                    self.eviction_cases[key] += value 
 
 
     def __process_search_webpage(self, start, end):
@@ -170,14 +184,6 @@ class Eviction_Scraper:
 
         except TimeoutException:
             pass
-        
-        try:
-            # Show all records on one page 
-            self.wait.until(EC.element_to_be_clickable(
-                (By.XPATH, "/html/body/div[1]/div[3]/button"))).click()
-
-        except TimeoutException:
-            print('No records are probably present')
 
 
     def scrape_cases_by_id(self, lst_case_ids, check_only_disposition = True):   
@@ -190,40 +196,46 @@ class Eviction_Scraper:
         Returns dict
         """
         scraped_eviction_cases = {key: [None] * len(lst_case_ids) for key in _KEYS_LIST}
-        self.driver.get("https://www.courtclerk.org/records-search/search-by-case-number/")
+        self.driver.get("https://www.courtclerk.org/records-search/case-number-search/")
 
-        for case_id, idx in enumerate(lst_case_ids):
+        for idx, case_id in enumerate(lst_case_ids):
 
             try:
                 # enter case_id on the search page
-                case_id_field = self.driver.find_element('name', 'casenumber').clear()
+
+                case_id_field = self.driver.find_element('name', 'casenumber')
+                case_id_field.clear()
                 case_id_field.send_keys(case_id)    
 
                 # find search button and click on it
-                self.driver.find_element('xpath', '/html/body/div[1]/div/div[2]/form/p/input[4]').click()
-
+                self.driver.find_element('xpath', '//*[@id="cc_frm"]/p/input[3]').click()
+                
                 if check_only_disposition:
                     scraped_eviction_cases["CASE NUMBER"][idx] = case_id
-                    disposition_string = self.driver.find_element('xpath', '//*[@id="case_summary_table"]/tbody/tr[8]').text.upper()  
-                    #disposition_string = disposition_tag.text.upper()            
+                    disposition_tag = self.driver.find_element('xpath', '//*[@id="case_summary_table"]/tbody/tr[8]') 
+                    disposition_string = disposition_tag.text.upper()            
                     if 'DISPOSITION' in disposition_string:
                         _, disposition_value = disposition_string.split(":", 1)
                         scraped_eviction_cases["DISPOSITION"][idx] = disposition_value.strip()
+
                 else:
                     summary_case_dict, party_info_dict = scrape_one_case(self.driver, self.explicit_wait)
                     case_dict = summary_case_dict.update(party_info_dict)
                     for key, val in case_dict.items():
                         if key in scraped_eviction_cases:
-                            scraped_eviction_cases[key][idx] = val                  
+                            scraped_eviction_cases[key][idx] = val       
 
+                logging.info(f'Finished the try statement successfully for case {idx} out of {len(lst_case_ids)}')           
+                
             except TimeoutError:
-                print('entering timeout exception. Qutting & re-initiating the driver')
+                logging.info('entering timeout exception. Qutting & re-initiating the driver')
                 self.driver.quit()
                 self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
-                self.driver.get("https://www.courtclerk.org/records-search/search-by-case-number/")
+                self.driver.get("https://www.courtclerk.org/records-search/case-number-search/")
 
                 # enter case_id on the search page
-                case_id_field = self.driver.find_element('name', 'casenumber').clear()
+                case_id_field = self.driver.find_element('name', 'casenumber')
+                case_id_field.clear()
                 case_id_field.send_keys(id)
     
                 # find search button and click on it
@@ -234,12 +246,18 @@ class Eviction_Scraper:
                 for key, val in case_dict.items():
                     if key in scraped_eviction_cases:
                         scraped_eviction_cases[key][idx] = val
+
+            except NoSuchElementException:
+                logging.info('No disposition present')
+                pass
             except:
-                print('Something went wrong. Stopping scraping.')
+                logging.info('Something went wrong. Stopping scraping.')
                 break 
             
             time.sleep(3)
-            self.driver.back()        
+            self.driver.back()  
+
+        logging.info('scraped_eviction_cases_dict is: ', scraped_eviction_cases)      
 
         return scraped_eviction_cases          
 
@@ -278,7 +296,7 @@ def initiate_driver(webdriver_location):
     driver = webdriver.Chrome(service=s, options=chrome_options)
 
     explicit_wait = WebDriverWait(driver, 50)
-    driver.implicitly_wait(40)
+    driver.implicitly_wait(20)
     driver.maximize_window()
 
     return driver, explicit_wait

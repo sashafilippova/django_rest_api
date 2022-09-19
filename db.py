@@ -3,7 +3,8 @@ import numpy as np
 import math
 from datetime import datetime as dt, timedelta as tdelta
 import psycopg2.extras
-from util import Eviction_Scraper, scrape_cases_by_id, normalize_data
+from sqlparse import sql
+from util import Eviction_Scraper, normalize_data
 
 class DB: 
     def __init__(self, connection):
@@ -117,33 +118,32 @@ class DB:
 
             if limit is not None:
                 c.execute(f'SELECT case_id FROM eviction_records \
-                        WHERE disposition is NULL LIMIT {limit};')
-
-                records_w_no_disposition = [record[0] for record in c.fetchall()] 
+                        WHERE disposition is NULL LIMIT {limit};') 
+                records_w_no_disposition = [record[0] for record in c.fetchall()]
             else:
                 c.execute(f'SELECT case_id FROM eviction_records \
-                        WHERE disposition is NULL LIMIT;')                
+                        WHERE disposition is NULL;')  
+                records_w_no_disposition = [record[0] for record in c.fetchall()]              
         
         # create a list of batches containings records with no disposition
         record_batches = list()
         for i in range(0, len(records_w_no_disposition), records_per_batch):
             record_batches.append(records_w_no_disposition[i:i + records_per_batch])
-        
-        print('record_batches: ', record_batches)
 
         for batch in record_batches:
             with Eviction_Scraper() as e:
                 scraped_eviction_cases = e.scrape_cases_by_id(batch)
                 df = normalize_data(scraped_eviction_cases)
                 df = df.filter(['case_id', 'disposition', 'disposition_date', 'last_updated'])
+                print(df)
                 columns = f"{tuple(df.columns)}".replace("'", "")
 
                 # convert pandas df into a list of tuples
                 records_lst = list(df.to_records(index=False))
 
                 query = f"""UPDATE eviction_records AS e SET
-                                disposition = c.disposition
-                                disposition_date = c.disposition_date
+                                disposition = c.disposition,
+                                disposition_date = c.disposition_date::date, 
                                 last_updated = c.last_updated
                             FROM (VALUES  %s 
                             ) AS c {columns}
@@ -152,7 +152,6 @@ class DB:
                 with self.conn.cursor() as c:
                     psycopg2.extras.execute_values(cur = c, sql = query, argslist = records_lst)
                     self.conn.commit()
-
 
 
 ####### UTILITY FUNCTIONS ###########
