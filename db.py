@@ -95,7 +95,6 @@ class DB:
             last_filed_date = c.fetchall()[0][0]    #datetime.date data format
 
         start_date = last_filed_date + tdelta(days = 1)
-        start_date = start_date.strftime("%m%d%Y")
 
         if end_date is None:
             if (start_date + tdelta(days = 90)) >= dt.today().date():
@@ -103,6 +102,8 @@ class DB:
             else:
                 end_date = start_date + tdelta(days = 90)
             end_date = end_date.strftime("%m%d%Y")
+        
+        start_date = start_date.strftime("%m%d%Y")
         
         pd_df = Eviction_Scraper().run_scraper(start_date, end_date)
         print('finished scraping. about to inject records into the db')
