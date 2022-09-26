@@ -1,0 +1,1 @@
+from eviction_scraper.models import EvictionRecord
