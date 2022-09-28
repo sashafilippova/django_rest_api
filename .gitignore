@@ -3,9 +3,8 @@ db.ini
 .vscode
 /data
 /eviction_scraper/settings.py
-server.py
-db.py
-testing.ipynb
+/other
+
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

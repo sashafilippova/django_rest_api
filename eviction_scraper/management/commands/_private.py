@@ -18,7 +18,7 @@ import numpy as np
 import math
 import logging
 
-logging.basicConfig(level=logging.DEBUG, filename='_testing_update_records.log')
+logging.basicConfig(level=logging.DEBUG, filename='_testing_scraping_records.log')
 
 _EVICTION_CASES = {
                 "CASE NUMBER": [], "COURT": [], "CASE CAPTION": [], "JUDGE": [], 
@@ -71,7 +71,7 @@ class Eviction_Scraper(BaseCommand):
                 logging.info(f'Finished scraping period between {start}-{end}')
 
             except TimeoutException:
-                logging.info('entering timeout exception. Qutting & re-initiating the driver')
+                logging.debug('entering timeout exception. Qutting & re-initiating the driver')
                 self.driver.quit()
                 self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
                 self.driver.get(
@@ -81,7 +81,7 @@ class Eviction_Scraper(BaseCommand):
                 self.__scrape_one_period()
                 logging.info(f'Finished scraping period between {start}-{end} (from second try)')
             except:
-                logging.info(f"Unknown Exception- unable to finish scraping for the entire period. \
+                logging.warning(f"Unknown Exception- unable to finish scraping for the entire period. \
                     Finished scraping before {start} date.")
                 break
 
@@ -99,10 +99,10 @@ class Eviction_Scraper(BaseCommand):
             self.wait.until(EC.element_to_be_clickable(
                 (By.XPATH, "/html/body/div[1]/div[3]/button"))).click()
         except TimeoutException:
-            print('Did not find the "show all rows" button. No records are probably present')
+            logging.warning('Did not find the "show all rows" button. No records are probably present')
 
         records_xpath_list = self.driver.find_elements('xpath', "//td[5]/form")
-        print(f'found {len(records_xpath_list)} records')
+        logging.info(f'found {len(records_xpath_list)} records')
 
         if len(records_xpath_list) > 0:
             search_tab_handle = self.driver.current_window_handle
@@ -124,7 +124,7 @@ class Eviction_Scraper(BaseCommand):
                         self.local_records[key][i] = val 
 
                 except ValueError:
-                    logging.info('something went wrong- entering ValueError except statement')
+                    logging.warning('something went wrong- entering ValueError except statement')
                     case = self.wait.until(EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/table/tbody/tr[1]/td[1]/div[3]/table/tbody/tr[1]/td[2]')))
                     logging.info('scrapped case_id successfuly')
                     self.cases_with_issues.append(case.text)
@@ -168,7 +168,7 @@ class Eviction_Scraper(BaseCommand):
             alert = self.driver.switch_to.alert
 
             if "Date range cannot be greater than 7 days" in alert.text:
-                print('issue with date range')
+                logging.warning('issue with date range')
                 alert.accept()
 
                 # add original start date to the list to be processed in the end 
@@ -183,7 +183,7 @@ class Eviction_Scraper(BaseCommand):
                 self.wait.until(EC.element_to_be_clickable((By.XPATH, 
                     '//*[@id="cc_frm"]/input[3]'))).click()
             else:
-                print('uknown alert')
+                logging.warning('uknown alert')
 
         except TimeoutException:
             pass
@@ -231,7 +231,7 @@ class Eviction_Scraper(BaseCommand):
                 logging.info(f'Finished the try statement successfully for case {idx} out of {len(lst_case_ids)}')           
                 
             except TimeoutError:
-                logging.info('entering timeout exception. Qutting & re-initiating the driver')
+                logging.warning('entering timeout exception. Qutting & re-initiating the driver')
                 self.driver.quit()
                 self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
                 self.driver.get("https://www.courtclerk.org/records-search/case-number-search/")
@@ -254,7 +254,7 @@ class Eviction_Scraper(BaseCommand):
                 logging.info('No disposition present')
                 pass
             except:
-                logging.info('Something went wrong. Stopping scraping.')
+                logging.warning('Something went wrong. Stopping scraping.')
                 break 
             
             time.sleep(3)
@@ -451,5 +451,7 @@ def normalize_data(dict_w_scraped_cases):
         df['disposition_date'] = None
     else:
         df[['disposition_date', 'disposition']] = df['disposition'].str.split(' - ', n=1, expand=True)
+    
+    df['disposition_date'] = pd.to_datetime(df['disposition_date'], errors='coerce').dt.date
 
     return df

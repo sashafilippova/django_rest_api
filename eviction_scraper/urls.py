@@ -19,5 +19,5 @@ from eviction_scraper import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('eviction_cases/', views.return_all_records)
+    path('eviction_records/', views.return_all_records)
 ]

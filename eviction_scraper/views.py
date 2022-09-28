@@ -8,7 +8,5 @@ def return_all_records(request):
         """
         eviction_records = EvictionRecord.objects.all()
         serializer = EvictionSerializer(eviction_records, many= True)
-        return JsonResponse({"eviction_cases": serializer.data})
+        return JsonResponse({"eviction_case_records": serializer.data})
 
-def scrape_new_records():
-    pass

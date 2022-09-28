@@ -13,7 +13,7 @@ class EvictionRecord(models.Model):
     case_caption = models.CharField(max_length=120, blank=True, null=True)
     judge = models.CharField(max_length=30, blank=True, null=True)
     filed_date = models.DateField()
-    case_type = models.CharField(max_length=16, blank=True, null=True)
+    case_type = models.CharField(max_length=30, blank=True, null=True)
     amount = models.IntegerField(blank=True, null=True)
     disposition = models.CharField(max_length=30, blank=True, null=True)
     disposition_date = models.DateField(blank=True, null=True)
@@ -31,7 +31,6 @@ class EvictionRecord(models.Model):
     
     def __str__(self):
         return f"{self.case_id} - {self.disposition}"
-
 
 
 class AuthGroup(models.Model):
