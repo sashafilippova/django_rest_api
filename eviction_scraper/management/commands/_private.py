@@ -196,9 +196,11 @@ class Eviction_Scraper(BaseCommand):
         Inputs:
           lst_case_ids (lst): a list of case ids where each id is a string.
 
-        Returns dict
+        Returns pd df
         """
         scraped_eviction_cases = {key: [None] * len(lst_case_ids) for key in _KEYS_LIST}
+
+        self.driver, self.wait = initiate_driver(_WEBDRIVER_LOCATION)
         self.driver.get("https://www.courtclerk.org/records-search/case-number-search/")
 
         for idx, case_id in enumerate(lst_case_ids):
@@ -258,11 +260,9 @@ class Eviction_Scraper(BaseCommand):
                 break 
             
             time.sleep(3)
-            self.driver.back()  
+            self.driver.back()   
 
-        logging.info('scraped_eviction_cases_dict is: ', scraped_eviction_cases)      
-
-        return scraped_eviction_cases          
+        return normalize_data(scraped_eviction_cases)          
 
     
     def __enter__(self): 

@@ -1,0 +1,12 @@
+{% extends "base_generic.html" %}
+
+{% block content %}
+  <h1>CourtRecords Home</h1>
+  <p>Welcome to CourtRecords, a website developed by <em>Sasha Filippova</em>!</p>
+
+  <p>The website offers Eviction Records for Hamilton county:</p>
+  <ul>
+    <li> Filed during the period <strong> {{ from }} - {{ to }} </strong> </li>
+    <li> <strong> {{ total_count }} </strong> total number of records </li>
+    <li> Last updated on <strong>{{ last_updated }} </strong> </li>
+{% endblock %}
