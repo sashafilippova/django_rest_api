@@ -21,6 +21,7 @@ from eviction_scraper import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', views.index, name='index'),
+    path('export_eviction_records/', views.csv_view, name = 'export_data'),
     path('eviction_records/', views.return_all_records, name = 'eviction_records')
 ]
 
