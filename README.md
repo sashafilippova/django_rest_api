@@ -10,7 +10,8 @@ It's getting cleaned, geocoded, and offered via REST API.
 - [x] management command to scrape new records and insert them into db
 - [x] management command to delete all records in db
 - [x] management command to write records into db from a csv file
-- [ ] management command to update existing records missing disposition
-- [ ] front end page to download records
+- [x] management command to update existing records missing disposition
+- [x] front end page to download records
 - [ ] scheduler (cron?)
 - [ ] containerize with Docker
+- [ ] figure out hosting
